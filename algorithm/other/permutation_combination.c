@@ -18,6 +18,7 @@ void full_permutation(char *A, int begin, int end)
     for (i = begin; i <= end; i++) {
         swap(A[begin], A[i]);
         full_permutation(A, begin+1, end);
+        swap(A[begin], A[i]);
     }
     return ;
 }
@@ -30,6 +31,6 @@ void combination()
 int
 main(void) {
     char A[5] = {'A', 'B', 'C', 'D', 'D'};
-    full_permutation(A, 0, 4);
+    full_permutation(A, 0, 3);
     return 0;
 }
