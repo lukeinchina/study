@@ -32,9 +32,9 @@ tree_to_list(Tree root) {
 
     if (NULL == root) {
         return left;
-    }
-
-    if (NULL == root->left) {
+    }else if (NULL == root->left && NULL == root->right) {
+        current.head = current.tail = root;
+    }else if (NULL == root->left) {
         /* root is the first element */
         right            = tree_to_list(root->right);
         root->right      = right.head;
