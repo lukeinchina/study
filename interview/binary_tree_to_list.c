@@ -23,53 +23,36 @@ struct HeadTailPair{
 
 /*---------------------------------------------------------*/
 /* convert function */
-
 struct HeadTailPair
 tree_to_list(Tree root) {
-    struct HeadTailPair left    = {NULL, NULL};
-    struct HeadTailPair right   = {NULL, NULL};
     struct HeadTailPair current = {NULL, NULL};
-
     if (NULL == root) {
-        return left;
-    }else if (NULL == root->left && NULL == root->right) {
-        current.head = current.tail = root;
-    }else if (NULL == root->left) {
-        /* root is the first element */
-        right            = tree_to_list(root->right);
-        root->right      = right.head;
-        right.head->left = root;
-        current.head     = root;
-        current.tail     = right.tail;
-    }else if (NULL == root->right) {
-        /* root is the last element */
-        left             = tree_to_list(root->left);
-        root->left       = left.tail;
-        left.tail->right = root;
-        current.tail     = root;
-        current.head     = left.head;
-    }else {
-        left             = tree_to_list(root->left);
-        right            = tree_to_list(root->right);
-        root->left       = left.tail;
-        root->right      = right.head;
-        left.tail->right = root;
-        right.head->left = root;
-        current.head     = left.head;
-        current.tail     = right.tail;
+        return current;
     }
-    return current; 
+    struct HeadTailPair left  = tree_to_list(root->left);
+    struct HeadTailPair right = tree_to_list(root->right);
+    root->left  = left.tail;
+    root->right = right.head;
+
+    if (NULL == left.tail) {
+        left.head = left.tail = root;
+    } else {
+        left.tail->right = root;
+    }
+
+    if (NULL == right.head) {
+        right.head = right.tail = root;
+    } else {
+        right.head->left = root;
+    }
+    current.head = left.head;
+    current.tail = right.tail;
+    return current;
 }
 
 List
 tree_to_list_driver(Tree root) {
     struct HeadTailPair temp;
-    if (NULL == root) {
-        return NULL;
-    }
-    if (NULL == root->left && NULL == root->right) {
-        return root;
-    }
     temp = tree_to_list(root);
     return temp.head; // first element
 }
