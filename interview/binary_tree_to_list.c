@@ -57,12 +57,23 @@ tree_to_list_driver(Tree root) {
     return temp.head; // first element
 }
 
-void PrintList(List head) {
+void print_list(List head) {
     while (NULL != head) {
         printf("%d\t", head->data);
         head = head->right;
     }
     printf("\n");
+}
+
+List 
+destory_list(List head) {
+    List p = head;
+    while (NULL != head) {
+        p = head->right;
+        free(head);
+        head = p;
+    }
+    return NULL;
 }
 
 /*---------------------------------------------------------*/
@@ -132,6 +143,8 @@ main(void) {
     printf("\n");
     // destory_binary_search_tree(root);
     List head = tree_to_list_driver(root);
-    PrintList(head);
+    print_list(head);
+    printf("\n");
+    destory_list(head);
     return 0;
 }
