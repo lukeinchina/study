@@ -259,6 +259,9 @@ func GetBtc123News() {
 	}
 }
 
+/* OK
+http://www.hellochain.info/lives-html
+*/
 func GetHelloChain() {
 	doc, err := goquery.NewDocument("http://www.hellochain.info/lives")
 	if err != nil {
@@ -390,13 +393,16 @@ func GetGongXiangCJ() {
 func main() {
 	log.SetPrefix("[BTC]")
 	log.SetFlags(log.Ldate | log.Lshortfile)
+	// GetHelloChain()
 	// c := make(chan int)
 
 	// GetGongXiangCJ()
-	// GetJGY()
+	// GetChaoBi()
+	// Get8BTC()
+	GetWeiLaiCaiJing()
 	// GetBtc123News()
 	// GetChainfor()
-	GetJsonData("https://www.chainfor.com/news/list/flashnew/data.do?type=0&pageSize=15&pageNo=1&title=")
+	// GetJsonData("https://www.chainfor.com/news/list/flashnew/data.do?type=0&pageSize=15&pageNo=1&title=")
 
 	// x := <-c
 	// fmt.Printf("%d\n", x)

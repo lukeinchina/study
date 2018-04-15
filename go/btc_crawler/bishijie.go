@@ -1,6 +1,7 @@
 package main
 
 import (
+	"./btcutil"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -107,6 +108,12 @@ func get_bsj_resp(size int) *BSJResp {
 	return msg
 }
 
+func upload_item(item *BSJItem) bool {
+	url := fmt.Sprintf("http://www.bishijie.com/home/newsflashpc/detail?id=%d", item.Newsflash_id)
+	btcutil.UploadToServer("bishijie", "币世界", url, item.Title, item.Content, item.Issue_time)
+	return true
+}
+
 /*
 http://www.bishijie.com/api/news/unreadNum?timestamp=1523345731
 {"error":0,"message":"","data":{"num":0}}
@@ -116,6 +123,28 @@ http://www.bishijie.com/api/newsv17/index?size=4&client=pc
 */
 
 func init_download() {
+	timestamp := int64(1523544578)
+	for {
+		msg := get_unread_msg(timestamp)
+		fmt.Printf("error :%d\n", msg.Error)
+		fmt.Printf("unread num:%d\n", msg.Data.Num)
+		if msg.Error != 0 || msg.Data.Num < 1 {
+			log.Printf("error:%d, num:%d\n", msg.Error, msg.Data.Num)
+			time.Sleep(60 * time.Second)
+			continue
+		}
+		resp := get_bsj_resp(msg.Data.Num)
+		if 0 != resp.Error {
+			log.Printf("error:%d\n", msg.Error)
+			time.Sleep(30 * time.Second)
+			continue
+		}
+		for _, item := range resp.Data[0].Buttom {
+			upload_item(&item)
+		}
+		log.Printf("[%d] record upload\n", msg.Data.Num)
+		break
+	}
 }
 
 func scan_download() {

@@ -2,6 +2,7 @@ package main
 
 import (
 	//	"./util"
+	"./btcutil"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -56,8 +57,9 @@ func get_content(text string) string {
 
 func upload_item(items []JinSeItem, idx int) {
 	item := items[idx]
-	fmt.Printf("[%d][%s]%s\n", idx, get_title(item.Content), get_content(item.Content))
-	UploadToServer()
+	// fmt.Printf("[%d][%d][%s]%s\n", idx, item.CreatedAt, get_title(item.Content), get_content(item.Content))
+	url := fmt.Sprintf("https://www.jinse.com/lives/%s.htm", item.Id)
+	btcutil.UploadToServer("jinse", "金色财经", url, get_title(item.Content), get_content(item.Content), item.CreatedAt)
 }
 
 func upload_data(res *JinSeResp) {
@@ -82,14 +84,7 @@ func get_http_data(url string) *JinSeResp {
 		return nil
 	}
 
-	fmt.Printf("[%s] news[%d]\n", url, data.News)
-	/*
-	   for _,v := range data.List {
-	       for idx, item := range v.Lives {
-	           fmt.Printf("[%d][%s]\n%s\n", idx, get_title(item.Content), get_content(item.Content))
-	       }
-	   }
-	*/
+	// fmt.Printf("[%s] news[%d]\n", url, data.News)
 	return data
 }
 

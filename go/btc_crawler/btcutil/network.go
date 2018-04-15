@@ -25,7 +25,7 @@ func HttpPost(url string, data_type string, data []byte) {
 
 	fmt.Println("response Status:", resp.Status)
 	_, _ = ioutil.ReadAll(resp.Body)
-	//fmt.Println("response Body:", string(body))
+	///fmt.Println("response Body:", string(body))
 }
 
 func get_sign(data map[string]string) string {
@@ -66,4 +66,20 @@ func UploadToServer(src_key, src_name, src_url, title, content string, post_stam
 	upload_data["sign"] = get_sign(upload_data)
 	json_str, _ := json.Marshal(upload_data)
 	HttpPost("http://api-dev.asminsight.com/v1.0/service/news", "application/json", json_str)
+}
+
+func GetHttpData(url string) []byte {
+	resp, err := http.Get(url)
+	if err != nil {
+		fmt.Println("http get error:", err)
+		return nil
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if nil != err {
+		fmt.Println("Read http body failed:", err)
+		return nil
+	}
+	return body
 }

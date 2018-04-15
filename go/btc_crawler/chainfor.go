@@ -5,10 +5,8 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"math/rand"
-	"net/http"
 	"time"
 )
 
@@ -105,21 +103,27 @@ type ChainForResp struct {
 	Obj     ChainForObj `json:"obj"`
 }
 
-func get_http_data(url string) *ChainForObj {
-	resp, err := http.Get(url)
-	if err != nil {
-		log.Println("http get error:", err)
-		return nil
+func upload_chainfor_data(obj *ChainForObj) int {
+	if nil == obj {
+		return -1
 	}
-	defer resp.Body.Close()
+	var succ_count int
+	for _, item := range obj.List {
+		sec := int(item.CreateDate.Time / 1000)
+		url := fmt.Sprintf("https://www.chainfor.com/news/show/%d.html", item.Id)
+		btcutil.UploadToServer("chainfor", "链向财经", url, btcutil.GetTitle(item.Introduction), btcutil.GetContent(item.Introduction), sec)
+		succ_count += 1
+	}
+	return succ_count
+}
 
-	body, err := ioutil.ReadAll(resp.Body)
-	if nil != err {
-		log.Println("Read http body failed:", err)
+func get_chainfor_data(url string) *ChainForObj {
+	bytedata := btcutil.GetHttpData(url)
+	if nil == bytedata {
 		return nil
 	}
 	data := &ChainForResp{}
-	err = json.Unmarshal(body, data)
+	err := json.Unmarshal(bytedata, data)
 	if err != nil {
 		log.Println("unmarshal failed:", err)
 		return nil
@@ -129,33 +133,15 @@ func get_http_data(url string) *ChainForObj {
 		log.Println("success == false")
 		return nil
 	}
-	/*
-	   for _,v := range data.List {
-	       for idx, item := range v.Lives {
-	           fmt.Printf("[%d][%s]\n%s\n", idx, get_title(item.Content), get_content(item.Content))
-	       }
-	   }
-	   return data
-	*/
 	return &data.Obj
-}
-
-func upload_data(obj *ChainForObj) int {
-	var succ_count int
-	for idx, item := range obj.List {
-		sec := item.CreateDate.Time / 1000
-		fmt.Printf("[%d][%d][%d]\n[%s]\n", idx, item.Id, sec, btcutil.GetTitle(item.Introduction))
-		succ_count += 1
-	}
-	return succ_count
 }
 
 func init_download() int {
 	var total int
 	for i := 0; i < 1; i++ {
 		url := fmt.Sprintf("https://www.chainfor.com/news/list/flashnew/data.do?type=0&pageSize=15&pageNo=%d&title=", i+1)
-		obj := get_http_data(url)
-		total += upload_data(obj)
+		obj := get_chainfor_data(url)
+		total += upload_chainfor_data(obj)
 		log.Printf("[%s]\n", url)
 	}
 	log.Printf("downlaod total [%d]\n", total)
@@ -165,9 +151,9 @@ func init_download() int {
 func scan_download() {
 	for {
 		url := "https://www.chainfor.com/news/list/flashnew/data.do?type=0&pageSize=15&pageNo=1&title="
-		obj := get_http_data(url)
-		upload_data(obj)
-		log.Printf("scan once [%s]\n", url)
+		obj := get_chainfor_data(url)
+		count := upload_chainfor_data(obj)
+		log.Printf("scan once [%s], upload count:%d\n", url, count)
 		var nsec int = rand.Intn(100) + 10
 		time.Sleep(time.Duration(nsec) * time.Second)
 	}
