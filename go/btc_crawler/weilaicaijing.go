@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/garyburd/redigo/redis"
 	"log"
 	"math/rand"
 	"time"
 )
+
+var redis_server string = "127.0.0.1:6379"
 
 type WeilaicaijingEntity struct {
 	Id     int    `json:"id"`
@@ -31,8 +34,9 @@ type WeilaicaijingResp struct {
 }
 
 func get_weilaicaijing_data(url string) *WeilaicaijingData {
-	bytedata := btcutil.GetHttpData(url)
+	bytedata := btcutil.GetHttpDataByProxy(url)
 	if bytedata == nil {
+		log.Printf("GetHttpDataByProxy nil\n")
 		return nil
 	}
 	resp := &WeilaicaijingResp{}
@@ -48,9 +52,9 @@ func get_weilaicaijing_data(url string) *WeilaicaijingData {
 	return resp.Data[0]
 }
 
-func upload_weilaicaijing_data(data *WeilaicaijingData) int {
+func upload_weilaicaijing_data(c redis.Conn, data *WeilaicaijingData) bool {
 	if nil == data {
-		return 0
+		return false
 	}
 	// "2018-04-13 周五"
 	date_str := data.Time[:11]
@@ -62,27 +66,52 @@ func upload_weilaicaijing_data(data *WeilaicaijingData) int {
 			tm = time.Now()
 			log.Printf("parse time failed[%s:%d]\n", url, idx)
 		}
+
+		if !btcutil.InsertDB(c, url) {
+			log.Printf("[%s] exist\n", url)
+			continue
+		}
+		texthash := btcutil.LongestSentenceHash(item.Text)
+		if !btcutil.InsertDB(c, texthash) {
+			log.Printf("[%s] exist\n", texthash)
+			continue
+		}
+
 		btcutil.UploadToServer("weilaicaijing", "未来财经", url, btcutil.GetTitle(item.Text), btcutil.GetContent(item.Text), int(tm.Unix()-8*3600))
 	}
-	return 0
+	return true
 }
 
 func init_download() {
+	redisc, err := redis.Dial("tcp", redis_server)
+	if err != nil {
+		fmt.Println("Connect to redis error:", err)
+		return
+	}
+	defer redisc.Close()
+
 	for idx := 100; idx > 0; idx-- {
 		url := fmt.Sprintf("http://www.weilaicaijing.com/api/Fastnews/lists?search_str=&page=%d", idx)
 		data := get_weilaicaijing_data(url)
-		upload_weilaicaijing_data(data)
+		upload_weilaicaijing_data(redisc, data)
 		log.Printf("%s download\n", url)
 	}
 }
 
 func scan_download() {
+	redisc, err := redis.Dial("tcp", redis_server)
+	if err != nil {
+		fmt.Println("Connect to redis error:", err)
+		return
+	}
+	defer redisc.Close()
+
 	for {
 		url := "http://www.weilaicaijing.com/api/Fastnews/lists?search_str=&page=1"
 		data := get_weilaicaijing_data(url)
-		upload_weilaicaijing_data(data)
+		upload_weilaicaijing_data(redisc, data)
 		log.Printf("%s download\n", url)
-		time.Sleep(108 * time.Second)
+		time.Sleep(38 * time.Second)
 	}
 }
 

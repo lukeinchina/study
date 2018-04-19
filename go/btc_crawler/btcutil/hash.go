@@ -24,7 +24,7 @@ func LongestSentenceHash(text string) string {
 	var dst SentenceSlicee
 	last := 0
 	for i, v := range text {
-		if v == '，' || v == '。' || v == '、' || v == '？' || v == '！' {
+		if v == '，' || v == '。' || v == '【' || v == '】' || v == '？' || v == '！' || v == '；' {
 			if last != i {
 				dst = append(dst, text[last:i])
 			}

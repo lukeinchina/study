@@ -1,16 +1,18 @@
 package main
 
 import (
-	//	"./util"
 	"./btcutil"
 	"encoding/json"
+	"flag"
 	"fmt"
-	"io/ioutil"
+	"github.com/garyburd/redigo/redis"
 	"log"
-	"net/http"
+	"math/rand"
 	"strings"
 	"time"
 )
+
+var redis_server string = "127.0.0.1:6379"
 
 type JinSeItem struct {
 	Id         int    `json:"id"`
@@ -55,85 +57,120 @@ func get_content(text string) string {
 	}
 }
 
-func upload_item(items []JinSeItem, idx int) {
-	item := items[idx]
-	// fmt.Printf("[%d][%d][%s]%s\n", idx, item.CreatedAt, get_title(item.Content), get_content(item.Content))
-	url := fmt.Sprintf("https://www.jinse.com/lives/%s.htm", item.Id)
+func upload_item(c redis.Conn, item *JinSeItem) bool {
+	url := fmt.Sprintf("https://www.jinse.com/lives/%d.htm", item.Id)
+
+	if !btcutil.InsertDB(c, url) {
+		log.Printf("[%s] exist\n", url)
+		return false
+	}
+	texthash := btcutil.LongestSentenceHash(item.Content)
+	if !btcutil.InsertDB(c, texthash) {
+		log.Printf("[%s] exist\n", texthash)
+		return false
+	}
+
 	btcutil.UploadToServer("jinse", "金色财经", url, get_title(item.Content), get_content(item.Content), item.CreatedAt)
+	return true
 }
 
-func upload_data(res *JinSeResp) {
+func upload_data(c redis.Conn, res *JinSeResp) {
 	for i := 0; i < res.News; i++ {
-		upload_item(res.List[0].Lives, i)
+		for _, item := range res.List[0].Lives {
+			upload_item(c, &item)
+		}
 	}
 }
 
-func get_http_data(url string) *JinSeResp {
-	resp, err := http.Get(url)
-	if err != nil {
-		fmt.Println("http get error:", err)
+func get_jinse_resp(url string) *JinSeResp {
+	bytedata := btcutil.GetHttpDataByProxy(url)
+	if bytedata == nil {
+		log.Println("GetHttpDataByProxy nil")
 		return nil
 	}
-	defer resp.Body.Close()
 
 	data := &JinSeResp{}
-	body, err := ioutil.ReadAll(resp.Body)
-	err = json.Unmarshal(body, data)
+	err := json.Unmarshal(bytedata, data)
 	if err != nil {
-		fmt.Println("unmarshal failed:", err)
+		log.Println("unmarshal failed:", err)
 		return nil
 	}
 
-	// fmt.Printf("[%s] news[%d]\n", url, data.News)
 	return data
 }
 
 func scan_jinse_news() {
-	res := get_http_data("https://api.jinse.com/v3/live/list?limit=5")
+
+	redisc, err := redis.Dial("tcp", redis_server)
+	if err != nil {
+		log.Println("Connect to redis error:", err)
+		return
+	}
+	defer redisc.Close()
+
+	res := get_jinse_resp("https://api.jinse.com/v3/live/list?limit=5")
 	if nil == res {
-		log.Panic("get_http_data empty")
+		log.Panic("get_jinse_resp empty")
 		return
 	}
 	log.Printf("top_id:%d, bottom_id:%d\n", res.TopId, res.BottomId)
-	upload_data(res)
+	upload_data(redisc, res)
 
 	for {
 		url := fmt.Sprintf("https://api.jinse.com/v3/live/list?limit=20&flag=up&id=%d", res.TopId)
-		res = get_http_data(url)
+		res = get_jinse_resp(url)
 		if res.News < 1 {
 			log.Printf("no new data from %d\n", res.TopId)
 		} else {
-			upload_data(res)
+			upload_data(redisc, res)
 		}
-		time.Sleep(50 * time.Second)
+		time.Sleep(23 * time.Second)
 	}
 }
 
 func init_jinse_news() {
-	res := get_http_data("https://api.jinse.com/v3/live/list?limit=20&flag=up&id=10000")
+	redisc, err := redis.Dial("tcp", redis_server)
+	if err != nil {
+		log.Println("Connect to redis error:", err)
+		return
+	}
+	defer redisc.Close()
+
+	res := get_jinse_resp("https://api.jinse.com/v3/live/list?limit=20&flag=up&id=10000")
 	if nil == res {
-		log.Panic("get_http_data empty")
+		log.Panic("get_jinse_resp empty")
 		return
 	}
 	log.Printf("top_id:%d, bottom_id:%d\n", res.TopId, res.BottomId)
-	upload_data(res)
+	upload_data(redisc, res)
 
 	for {
 		url := fmt.Sprintf("https://api.jinse.com/v3/live/list?limit=20&flag=up&id=%d", res.TopId)
-		res = get_http_data(url)
+		res = get_jinse_resp(url)
 		if res.News < 1 {
 			log.Printf("no new data from %d\n", res.TopId)
 			break
 		}
-		upload_data(res)
-		time.Sleep(50 * time.Second)
+		upload_data(redisc, res)
+		time.Sleep(25 * time.Second)
 	}
 }
 
 func main() {
+	var init bool
+	flag.BoolVar(&init, "init", false, "initial start down")
+	flag.Parse()
+	fmt.Printf("init = %t\n", init)
+
 	log.SetPrefix("[JINSE]")
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
-	init_jinse_news()
+	rand.Seed(time.Now().Unix())
+	if init {
+		init_jinse_news()
+	} else {
+		scan_jinse_news()
+	}
+
 }
 
 /* "news":0,

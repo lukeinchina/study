@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/garyburd/redigo/redis"
 	"log"
 	"math/rand"
 	"time"
 )
+
+var redis_server string = "127.0.0.1:6379"
 
 type ChainForFooter struct {
 }
@@ -103,7 +106,7 @@ type ChainForResp struct {
 	Obj     ChainForObj `json:"obj"`
 }
 
-func upload_chainfor_data(obj *ChainForObj) int {
+func upload_chainfor_data(c redis.Conn, obj *ChainForObj) int {
 	if nil == obj {
 		return -1
 	}
@@ -111,14 +114,25 @@ func upload_chainfor_data(obj *ChainForObj) int {
 	for _, item := range obj.List {
 		sec := int(item.CreateDate.Time / 1000)
 		url := fmt.Sprintf("https://www.chainfor.com/news/show/%d.html", item.Id)
+		if !btcutil.InsertDB(c, url) {
+			log.Printf("[%s] exist\n", url)
+			continue
+		}
+		texthash := btcutil.LongestSentenceHash(item.Introduction)
+		if !btcutil.InsertDB(c, texthash) {
+			log.Printf("[%s] exist\n", texthash)
+			continue
+		}
+
 		btcutil.UploadToServer("chainfor", "链向财经", url, btcutil.GetTitle(item.Introduction), btcutil.GetContent(item.Introduction), sec)
+		log.Printf("[%s] upload!", url)
 		succ_count += 1
 	}
 	return succ_count
 }
 
 func get_chainfor_data(url string) *ChainForObj {
-	bytedata := btcutil.GetHttpData(url)
+	bytedata := btcutil.GetHttpDataByProxy(url)
 	if nil == bytedata {
 		return nil
 	}
@@ -138,10 +152,21 @@ func get_chainfor_data(url string) *ChainForObj {
 
 func init_download() int {
 	var total int
-	for i := 0; i < 1; i++ {
+
+	redisc, err := redis.Dial("tcp", redis_server)
+	if err != nil {
+		fmt.Println("Connect to redis error:", err)
+		return 0
+	}
+	defer redisc.Close()
+
+	for i := 0; i < 5; i++ {
 		url := fmt.Sprintf("https://www.chainfor.com/news/list/flashnew/data.do?type=0&pageSize=15&pageNo=%d&title=", i+1)
 		obj := get_chainfor_data(url)
-		total += upload_chainfor_data(obj)
+		if obj == nil {
+			continue
+		}
+		total += upload_chainfor_data(redisc, obj)
 		log.Printf("[%s]\n", url)
 	}
 	log.Printf("downlaod total [%d]\n", total)
@@ -152,10 +177,24 @@ func scan_download() {
 	for {
 		url := "https://www.chainfor.com/news/list/flashnew/data.do?type=0&pageSize=15&pageNo=1&title="
 		obj := get_chainfor_data(url)
-		count := upload_chainfor_data(obj)
-		log.Printf("scan once [%s], upload count:%d\n", url, count)
-		var nsec int = rand.Intn(100) + 10
+		if obj == nil {
+			log.Println("get_chainfor_data nil. sleep 30 for next try")
+			time.Sleep(30 * time.Second)
+			continue
+		}
+
+		redisc, err := redis.Dial("tcp", redis_server)
+		if err != nil {
+			log.Println("Connect to redis error:", err)
+			time.Sleep(10 * time.Second)
+			continue
+		}
+
+		count := upload_chainfor_data(redisc, obj)
+		var nsec int = rand.Intn(30) + 10
+		log.Printf("scan once [%s], upload count:%d, sleep %d seconds\n", url, count, nsec)
 		time.Sleep(time.Duration(nsec) * time.Second)
+		redisc.Close()
 	}
 }
 

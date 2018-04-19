@@ -5,8 +5,11 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"github.com/garyburd/redigo/redis"
 	"io/ioutil"
+	"log"
 	"net/http"
+	"net/url"
 	"sort"
 	"time"
 )
@@ -23,7 +26,7 @@ func HttpPost(url string, data_type string, data []byte) {
 	}
 	defer resp.Body.Close()
 
-	fmt.Println("response Status:", resp.Status)
+	log.Println("response Status:", resp.Status)
 	_, _ = ioutil.ReadAll(resp.Body)
 	///fmt.Println("response Body:", string(body))
 }
@@ -71,14 +74,58 @@ func UploadToServer(src_key, src_name, src_url, title, content string, post_stam
 func GetHttpData(url string) []byte {
 	resp, err := http.Get(url)
 	if err != nil {
-		fmt.Println("http get error:", err)
+		log.Println("http get error:", err)
 		return nil
 	}
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if nil != err {
-		fmt.Println("Read http body failed:", err)
+		log.Println("Read http body failed:", err)
+		return nil
+	}
+	return body
+}
+
+func fetch_proxy_addr() string {
+	var redis_server string = "127.0.0.1:6379"
+	c, err := redis.Dial("tcp", redis_server)
+	if err != nil {
+		log.Println("Connect to redis error", err)
+		return ""
+	}
+	defer c.Close()
+
+	proxy_addr, err := redis.String(c.Do("GET", "proxy_addr"))
+	if err != nil {
+		log.Println("redis get failed:", err)
+		return ""
+	} else {
+		return proxy_addr
+	}
+}
+
+func GetHttpDataByProxy(url_addr string) []byte {
+	proxy := func(_ *http.Request) (*url.URL, error) {
+		proxy_addr := fmt.Sprintf("http://%s", fetch_proxy_addr())
+		log.Printf("proxy:%s\n", proxy_addr)
+		return url.Parse(proxy_addr)
+	}
+
+	transport := &http.Transport{Proxy: proxy}
+
+	client := &http.Client{Transport: transport}
+
+	resp, err := client.Get(url_addr)
+	if err != nil {
+		log.Println("http get error:", err)
+		return nil
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if nil != err {
+		log.Println("Read http body failed:", err)
 		return nil
 	}
 	return body

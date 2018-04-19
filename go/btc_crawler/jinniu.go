@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/garyburd/redigo/redis"
 	"log"
 	"math/rand"
-	"net/http"
 	"time"
 )
+
+var redis_server string = "127.0.0.1:6379"
 
 /*
 "created_at":
@@ -41,18 +43,8 @@ type JinNiuResp struct {
 }
 
 /* http://www.jinniu.cn/bitsquawk/infoes?page=1&limit=1 */
-func get_json_data(url string) {
-	resp, err := http.Get(url)
-	if err != nil {
-		fmt.Println("http get error:", err)
-		return
-	}
-	defer resp.Body.Close()
-
-}
-
 func get_jinniu_data(url string) *JinNiuData {
-	bytedata := btcutil.GetHttpData(url)
+	bytedata := btcutil.GetHttpDataByProxy(url)
 	if nil == bytedata {
 		return nil
 	}
@@ -70,20 +62,37 @@ func get_jinniu_data(url string) *JinNiuData {
 	return resp.Data
 }
 
-func upload_jinniu_data(data *JinNiuData) bool {
-	for _, v := range data.List {
-		tm, e := time.Parse("2006-01-02 15:04:05", *v.CreatedAt)
+func upload_jinniu_data(c redis.Conn, data *JinNiuData) bool {
+	for _, item := range data.List {
+		tm, e := time.Parse("2006-01-02 15:04:05", *item.CreatedAt)
 		if e != nil {
 			tm = time.Now()
 		}
-		url := fmt.Sprintf("http://www.jinniu.cn/kuaixun/id_%d", v.Id)
-		btcutil.UploadToServer("jinniu", "金牛财经", url, btcutil.GetTitle(v.Summary), btcutil.GetContent(v.Summary), int(tm.Unix()-8*3600))
+		url := fmt.Sprintf("http://www.jinniu.cn/kuaixun/id_%d", item.Id)
+		if !btcutil.InsertDB(c, url) {
+			log.Printf("[%s] exist\n", url)
+			continue
+		}
+		texthash := btcutil.LongestSentenceHash(item.Summary)
+		if !btcutil.InsertDB(c, texthash) {
+			log.Printf("[%s] exist\n", texthash)
+			continue
+		}
+
+		btcutil.UploadToServer("jinniu", "金牛财经", url, btcutil.GetTitle(item.Summary), btcutil.GetContent(item.Summary), int(tm.Unix()-8*3600))
 		log.Printf("upload %s\n", url)
 	}
 	return true
 }
 
 func init_download() {
+	redisc, err := redis.Dial("tcp", redis_server)
+	if err != nil {
+		fmt.Println("Connect to redis error:", err)
+		return
+	}
+	defer redisc.Close()
+
 	for idx := 6; idx > 0; idx-- {
 		url := fmt.Sprintf("http://www.jinniu.cn/bitsquawk/infoes?page=%d&limit=100", idx)
 		log.Printf("%s\n", url)
@@ -92,12 +101,29 @@ func init_download() {
 			log.Printf("get [%s] data failed\n", url)
 			continue
 		}
-		upload_jinniu_data(data)
+		upload_jinniu_data(redisc, data)
 	}
-	// get_json_data("http://www.jinniu.cn/bitsquawk/infoes?page=1&limit=3")
 }
 
 func scan_download() {
+
+	redisc, err := redis.Dial("tcp", redis_server)
+	if err != nil {
+		fmt.Println("Connect to redis error:", err)
+		return
+	}
+	defer redisc.Close()
+
+	for {
+		url := "http://www.jinniu.cn/bitsquawk/infoes?page=1&limit=10"
+		data := get_jinniu_data(url)
+		if nil == data {
+			log.Printf("get [%s] data failed\n", url)
+			continue
+		}
+		upload_jinniu_data(redisc, data)
+		time.Sleep(30 * time.Second)
+	}
 }
 
 func main() {
@@ -106,7 +132,7 @@ func main() {
 	flag.Parse()
 	fmt.Printf("init = %t\n", init)
 
-	log.SetPrefix("[bishijie]")
+	log.SetPrefix("[jinniu]")
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	rand.Seed(time.Now().Unix())
 	if init {
