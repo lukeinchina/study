@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-var redis_server string = "127.0.0.1:6379"
+var redis_server string = "127.0.0.1:7788"
 
 /*
 {"updatedTime":"2018-04-15 20:25:30","id":5669,"newsContent":"员工美店也是国美希望搭建的一个新渠道。”</p>","newsLevel":5,"praiseNum":0,"trampleNum":0
@@ -58,6 +58,7 @@ func upload_chaobi_data(c redis.Conn, item *ChaoBiEntity) bool {
 		log.Printf("[%s] exist\n", texthash)
 		return false
 	}
+	log.Printf("[debug][%s] does not exist[%s]\n", texthash, item.Content)
 	btcutil.UploadToServer("chaobi", "炒币网", url, "", item.Content, get_time_stamp(item.UpdatedTime))
 	log.Printf("[%s] upload!", url)
 	return true

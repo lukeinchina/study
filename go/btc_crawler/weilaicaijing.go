@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-var redis_server string = "127.0.0.1:6379"
+var redis_server string = "127.0.0.1:7788"
 
 type WeilaicaijingEntity struct {
 	Id     int    `json:"id"`
@@ -71,13 +71,15 @@ func upload_weilaicaijing_data(c redis.Conn, data *WeilaicaijingData) bool {
 			log.Printf("[%s] exist\n", url)
 			continue
 		}
-		texthash := btcutil.LongestSentenceHash(item.Text)
+		content := btcutil.GetContent(item.Text)
+		texthash := btcutil.LongestSentenceHash(content)
 		if !btcutil.InsertDB(c, texthash) {
 			log.Printf("[%s] exist\n", texthash)
 			continue
 		}
+		log.Printf("[debug][%s] does not exist[%s]\n", texthash, item.Text)
 
-		btcutil.UploadToServer("weilaicaijing", "未来财经", url, btcutil.GetTitle(item.Text), btcutil.GetContent(item.Text), int(tm.Unix()-8*3600))
+		btcutil.UploadToServer("weilaicaijing", "未来财经", url, btcutil.GetTitle(item.Text), content, int(tm.Unix()-8*3600))
 	}
 	return true
 }

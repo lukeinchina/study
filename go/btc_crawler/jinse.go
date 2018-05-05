@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-var redis_server string = "127.0.0.1:6379"
+var redis_server string = "127.0.0.1:7788"
 
 type JinSeItem struct {
 	Id         int    `json:"id"`
@@ -61,16 +61,18 @@ func upload_item(c redis.Conn, item *JinSeItem) bool {
 	url := fmt.Sprintf("https://www.jinse.com/lives/%d.htm", item.Id)
 
 	if !btcutil.InsertDB(c, url) {
-		log.Printf("[%s] exist\n", url)
+		// log.Printf("[%s] exist\n", url)
 		return false
 	}
-	texthash := btcutil.LongestSentenceHash(item.Content)
+	content := btcutil.GetContent(item.Content)
+	texthash := btcutil.LongestSentenceHash(content)
 	if !btcutil.InsertDB(c, texthash) {
 		log.Printf("[%s] exist\n", texthash)
 		return false
 	}
+	log.Printf("[debug][%s] does not exist[%s]\n", texthash, content)
 
-	btcutil.UploadToServer("jinse", "金色财经", url, get_title(item.Content), get_content(item.Content), item.CreatedAt)
+	btcutil.UploadToServer("jinse", "金色财经", url, get_title(item.Content), content, item.CreatedAt)
 	return true
 }
 
@@ -108,23 +110,20 @@ func scan_jinse_news() {
 	}
 	defer redisc.Close()
 
-	res := get_jinse_resp("https://api.jinse.com/v3/live/list?limit=5")
-	if nil == res {
-		log.Panic("get_jinse_resp empty")
-		return
-	}
-	log.Printf("top_id:%d, bottom_id:%d\n", res.TopId, res.BottomId)
-	upload_data(redisc, res)
-
 	for {
-		url := fmt.Sprintf("https://api.jinse.com/v3/live/list?limit=20&flag=up&id=%d", res.TopId)
-		res = get_jinse_resp(url)
+		url := "https://api.jinse.com/v3/live/list?limit=3"
+		res := get_jinse_resp(url)
+		if nil == res {
+			log.Printf("nil get_jinse_esp\n")
+			time.Sleep(33 * time.Second)
+			continue
+		}
 		if res.News < 1 {
-			log.Printf("no new data from %d\n", res.TopId)
+			log.Printf("no new data from\n")
 		} else {
 			upload_data(redisc, res)
 		}
-		time.Sleep(23 * time.Second)
+		time.Sleep(28 * time.Second)
 	}
 }
 

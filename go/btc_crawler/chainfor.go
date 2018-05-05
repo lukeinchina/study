@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-var redis_server string = "127.0.0.1:6379"
+var redis_server string = "127.0.0.1:7788"
 
 type ChainForFooter struct {
 }
@@ -118,13 +118,15 @@ func upload_chainfor_data(c redis.Conn, obj *ChainForObj) int {
 			log.Printf("[%s] exist\n", url)
 			continue
 		}
-		texthash := btcutil.LongestSentenceHash(item.Introduction)
+		content := btcutil.GetContent(item.Introduction)
+		texthash := btcutil.LongestSentenceHash(content)
 		if !btcutil.InsertDB(c, texthash) {
 			log.Printf("[%s] exist\n", texthash)
 			continue
 		}
+		log.Printf("[debug][%s] does not exist[%s]\n", texthash, content)
 
-		btcutil.UploadToServer("chainfor", "链向财经", url, btcutil.GetTitle(item.Introduction), btcutil.GetContent(item.Introduction), sec)
+		btcutil.UploadToServer("chainfor", "链向财经", url, btcutil.GetTitle(item.Introduction), content, sec)
 		log.Printf("[%s] upload!", url)
 		succ_count += 1
 	}

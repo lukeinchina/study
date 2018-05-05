@@ -24,7 +24,7 @@ func LongestSentenceHash(text string) string {
 	var dst SentenceSlicee
 	last := 0
 	for i, v := range text {
-		if v == '，' || v == '。' || v == '【' || v == '】' || v == '？' || v == '！' || v == '；' {
+		if v == '，' || v == '。' || v == '【' || v == '】' || v == '？' || v == '！' || v == '；' || v == '：' {
 			if last != i {
 				dst = append(dst, text[last:i])
 			}
@@ -36,7 +36,7 @@ func LongestSentenceHash(text string) string {
 	}
 	sort.Sort(dst)
 	h := md5.New()
-	for idx := 0; idx < 3 && idx < len(dst); idx++ {
+	for idx := 0; idx < 2 && idx < len(dst); idx++ {
 		io.WriteString(h, dst[idx])
 	}
 	return fmt.Sprintf("%x", h.Sum(nil))

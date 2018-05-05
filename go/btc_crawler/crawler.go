@@ -1,6 +1,7 @@
 package main
 
 import (
+	"./btcutil"
 	"bytes"
 	"crypto/md5"
 	"encoding/json"
@@ -10,12 +11,14 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
 
-var redis_server string = "127.0.0.1:6379"
+var redis_server string = "127.0.0.1:7788"
 
 func GetTextSimHash(data string) string {
 	return fmt.Sprintf("%x", md5.Sum([]byte(data)))
@@ -96,22 +99,6 @@ func HttpPost(url string, data_type string, data []byte) {
 
 }
 
-func GetJsonData(url string) string {
-	resp, err := http.Get(url)
-	if err != nil {
-		// handle error
-	}
-
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		// handle error
-	}
-
-	fmt.Println(string(body))
-	return string(body)
-}
-
 /*
 https://www.chainfo.com/live/list.html
 http://www.jinse.com/lives
@@ -131,45 +118,6 @@ http://kuaixun.eastmoney.com
 http://news.10jqka.com.cn/realtimenews.html
 http://live.sina.com.cn/zt/fv/finance/globalnews1
 */
-
-/*
-http://www.bishijie.com/kuaixun   JS
-================
-*/
-
-/*
-链向财经:https://www.chainfor.com/live/list.html
-*/
-func GetChainfor() {
-	doc, err := goquery.NewDocument("https://www.chainfor.com/live/list.html")
-	if err != nil {
-		log.Fatal(err)
-	}
-	// Find the review items
-	doc.Find(".kuaixun-list-box").Each(func(i int, s *goquery.Selection) {
-		// title_sele := s.Find("k-text")
-		title := s.Text()
-		fmt.Printf("[%d]: %s \n", i, title)
-	})
-}
-
-/*
-金色财经:http://www.jinse.com/lives
-*/
-func GetJinSe() {
-	doc, err := goquery.NewDocument("http://www.jinse.com/lives")
-	if err != nil {
-		log.Fatal(err)
-	}
-	// Find the review items
-	//doc.Find(".con-item .live-info").Each(func(i int, s *goquery.Selection) {
-	doc.Find(".js-left .js-lives").Each(func(i int, s *goquery.Selection) {
-		title := s.Text()
-		// href, _ := sele.Attr("href")
-		// fmt.Printf("[%d]: %s \n href: %s\n", i, title, href)
-		fmt.Printf("[%d]: %s \n href: n", i, title)
-	})
-}
 
 func GetBtcNewsContent(url string) string {
 	/* http://news.btc123.com/news/detail?id=12828 */
@@ -241,7 +189,11 @@ func GetBtc123News() {
 			/* 如果是站外的，没有抓，用摘要代替 */
 			if content == "" {
 				content = strings.TrimSpace(s.Find(".n_newsnote").Text())
-				// log.Printf("[%s]%s\n", content)
+			}
+			texthash := btcutil.LongestSentenceHash(content)
+			if !btcutil.InsertDB(redisc, texthash) {
+				log.Printf("[%s] exist\n", texthash)
+				return
 			}
 
 			tm, e := time.Parse("2006-01-02 15:04:05", real_date)
@@ -251,11 +203,10 @@ func GetBtc123News() {
 			}
 
 			UploadToServer("btc123", "比特币123", href, title, content, tm)
-			log.Printf("POST:%s[%d]\n", url, i)
+			log.Printf("upload[%s]%s\n", title, content)
 		})
 		log.Printf("succ:%s\n", url)
-		break
-		time.Sleep(time.Second * 40)
+		time.Sleep(time.Second * 41)
 	}
 }
 
@@ -296,48 +247,81 @@ func GetJGY() {
 }
 
 /*
-JS. ==========
-*/
-func GetChaoBi() {
-	doc, err := goquery.NewDocument("http://www.chaobi.com/page/lives/index.html")
-	if err != nil {
-		log.Fatal(err)
-	}
-	doc.Find(".content .new-wrap").Each(func(i int, s *goquery.Selection) {
-		title := s.Text()
-		fmt.Printf("[%d]:%s\n", i, title)
-	})
-}
-
-/*
-JS ========
-*/
-func GetWeiLaiCaiJing() {
-	doc, err := goquery.NewDocument("http://www.weilaicaijing.com/NowExpress")
-	if err != nil {
-		log.Fatal(err)
-	}
-	doc.Find("body").Each(func(i int, s *goquery.Selection) {
-		title := s.Text()
-		fmt.Printf("[%d]:%s\n", i, title)
-	})
-}
-
-/*
 http://www.8btc.com/news
 => http://www.8btc.com/news/page/1
 OK
 */
+/* s: 5分钟前 */
+func extract_timestamp(s string) int64 {
+	stamp := time.Now().Unix()
+	fmt.Printf("[%d]\n", stamp)
+
+	text := strings.TrimSpace(s)
+	pat := `^(\d+)(\W+)前`
+	reg := regexp.MustCompile(pat)
+	params := reg.FindStringSubmatch(text)
+	if len(params) != 3 {
+		log.Printf("[%s] get timestamp failed\n", s)
+		return stamp
+	}
+	d, err := strconv.Atoi(params[1])
+	if err != nil {
+		log.Printf(" get timestamp int faild [%s] [%s]\n", params[1], s)
+		return stamp
+	}
+	unit_str := params[2]
+	var unit int64
+
+	switch unit_str {
+	case "分钟":
+		unit = 60
+		break
+	case "小时":
+		unit = 3600
+		break
+	case "天":
+		unit = 86400
+		break
+	case "周":
+		unit = 604800
+		break
+	case "月":
+		unit = 30 * 86400
+		break
+	default:
+		log.Printf("get unit failed for [%s] [%s]\n", unit_str, s)
+		break
+	}
+	stamp -= int64(d) * unit
+	return stamp
+}
+
 func Get8BTC() {
-	doc, err := goquery.NewDocument("http://www.8btc.com/news/page/1")
+	url := "http://www.8btc.com/news/page/1"
+	doc, err := goquery.NewDocument(url)
 	if err != nil {
 		log.Fatal(err)
 	}
 	doc.Find(".article-content").Each(func(i int, s *goquery.Selection) {
 		ts := s.Find(".article-title a")
-		title := ts.Text()
+		href, err1 := ts.Attr("href")
+		title, err2 := ts.Attr("title")
+		if !err1 || !err2 {
+			return
+		}
 		content := s.Find(".fast_news_content").Text()
-		fmt.Printf("[%d]:%s\n%s\n", i, title, content)
+
+		if "" == content || title == "" || href == "" {
+			log.Printf("title or content text empty [%s]\n", url)
+			return
+		}
+		infos := s.Find(".article-info")
+		timestr := infos.Find("span").First().Text()
+		if "" == timestr {
+			log.Printf("get time text failed [%s]\n", url)
+			return
+		}
+		fmt.Printf("[%d][%s][%s]:%s\n%s\n", i, timestr, href, title, content)
 	})
 }
 
@@ -377,16 +361,17 @@ func GetGongXiangCJ() {
 				tm = time.Now()
 			}
 
-			hashkey := GetTextSimHash(content)
-			if InsertDB(redisc, hashkey) {
-				UploadToServer("gongxiangcj", "共享财经", "http://www.gongxiangcj.com/short_news", title, content, tm)
-				log.Printf("%s:%d POST\n", url, i)
+			texthash := btcutil.LongestSentenceHash(content)
+			if !btcutil.InsertDB(redisc, texthash) {
+				log.Printf("[%s] exist\n", texthash)
+				return
 			}
+			UploadToServer("gongxiangcj", "共享财经", "http://www.gongxiangcj.com/short_news", title, content, tm)
+			log.Printf("[gongxiangcj]upload[%s][%s]\n", title, content)
 		})
 
 		log.Printf("scan:%s\n", url)
-		break
-		time.Sleep(time.Second * 60)
+		time.Sleep(time.Second * 39)
 	}
 }
 
@@ -397,13 +382,9 @@ func main() {
 	// c := make(chan int)
 
 	// GetGongXiangCJ()
-	// GetChaoBi()
-	// Get8BTC()
-	GetWeiLaiCaiJing()
 	// GetBtc123News()
-	// GetChainfor()
-	// GetJsonData("https://www.chainfor.com/news/list/flashnew/data.do?type=0&pageSize=15&pageNo=1&title=")
-
+	// Get8BTC()
+	extract_timestamp("10分钟前")
 	// x := <-c
 	// fmt.Printf("%d\n", x)
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -22,7 +23,8 @@ func HttpPost(url string, data_type string, data []byte) {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		panic(err)
+		log.Printf("post [%s] data failed:%s\n", url, err)
+		return
 	}
 	defer resp.Body.Close()
 
@@ -69,10 +71,24 @@ func UploadToServer(src_key, src_name, src_url, title, content string, post_stam
 	upload_data["sign"] = get_sign(upload_data)
 	json_str, _ := json.Marshal(upload_data)
 	HttpPost("http://api-dev.asminsight.com/v1.0/service/news", "application/json", json_str)
+
+	log.Printf("upload [%s][%s]\n", title, content)
+}
+
+func dialTimeout(network, addr string) (net.Conn, error) {
+	return net.DialTimeout(network, addr, time.Second*30)
 }
 
 func GetHttpData(url string) []byte {
-	resp, err := http.Get(url)
+	transport := &http.Transport{
+		Dial:              dialTimeout,
+		DisableKeepAlives: true,
+	}
+
+	timeout := time.Duration(5 * time.Second)
+	client := &http.Client{Transport: transport, Timeout: timeout}
+
+	resp, err := client.Get(url)
 	if err != nil {
 		log.Println("http get error:", err)
 		return nil
@@ -88,7 +104,7 @@ func GetHttpData(url string) []byte {
 }
 
 func fetch_proxy_addr() string {
-	var redis_server string = "127.0.0.1:6379"
+	var redis_server string = "127.0.0.1:7788"
 	c, err := redis.Dial("tcp", redis_server)
 	if err != nil {
 		log.Println("Connect to redis error", err)
@@ -112,9 +128,15 @@ func GetHttpDataByProxy(url_addr string) []byte {
 		return url.Parse(proxy_addr)
 	}
 
-	transport := &http.Transport{Proxy: proxy}
+	transport := &http.Transport{
+		Proxy:             proxy,
+		Dial:              dialTimeout,
+		DisableKeepAlives: true,
+	}
 
-	client := &http.Client{Transport: transport}
+	timeout := time.Duration(60 * time.Second)
+
+	client := &http.Client{Transport: transport, Timeout: timeout}
 
 	resp, err := client.Get(url_addr)
 	if err != nil {

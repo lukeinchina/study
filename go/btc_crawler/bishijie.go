@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-var redis_server string = "127.0.0.1:6379"
+var redis_server string = "127.0.0.1:7788"
 
 /*
 {
@@ -105,7 +105,7 @@ func get_unread_msg(timestamp int64) *BSJUnreadMsg {
 func get_bsj_resp(size int) *BSJResp {
 	url := fmt.Sprintf("http://www.bishijie.com/api/newsv17/index?size=%d&client=pc", size)
 	bytedata := btcutil.GetHttpDataByProxy(url)
-	if bytedata != nil {
+	if bytedata == nil {
 		log.Println("GetHttpDataByProxy return nil")
 		return nil
 	}
@@ -130,6 +130,7 @@ func upload_item(c redis.Conn, item *BSJItem) bool {
 		log.Printf("[%s] exist\n", texthash)
 		return false
 	}
+	log.Printf("[debug][%s] doest not exist[%s]\n", texthash, item.Content)
 	btcutil.UploadToServer("bishijie", "币世界", url, item.Title, item.Content, item.Issue_time)
 	log.Printf("[%s] upload!", url)
 	return true
@@ -180,46 +181,46 @@ func init_download() {
 }
 
 func scan_download() {
-	timestamp := time.Now().Unix() - 600
 	for {
 		log.Printf("ready to get_unread_msg\n")
-		msg := get_unread_msg(timestamp)
-		if msg == nil {
-			log.Printf("get http response failed, sleep 30 seconds\n")
-			time.Sleep(30 * time.Second)
-			continue
-		}
-		fmt.Printf("error:%d, unread num:%d\n", msg.Error, msg.Data.Num)
-		if msg.Error != 0 || msg.Data.Num < 1 {
-			log.Printf("error:%d, num:%d, sleep 30 seconds, try next times\n", msg.Error, msg.Data.Num)
-			time.Sleep(30 * time.Second)
-			continue
-		}
-		resp := get_bsj_resp(msg.Data.Num)
+		/*
+			msg := get_unread_msg(timestamp)
+			if msg == nil {
+				log.Printf("get http response failed, sleep 30 seconds\n")
+				time.Sleep(30 * time.Second)
+				continue
+			}
+			fmt.Printf("error:%d, unread num:%d\n", msg.Error, msg.Data.Num)
+			if msg.Error != 0 || msg.Data.Num < 1 {
+				log.Printf("error:%d, num:%d, sleep 30 seconds, try next times\n", msg.Error, msg.Data.Num)
+				time.Sleep(30 * time.Second)
+				continue
+			}
+		*/
+		resp := get_bsj_resp(3)
 		if nil == resp {
 			log.Printf("get_bsj_resp nil. sleep 30 seconds\n")
 			time.Sleep(30 * time.Second)
 			continue
 		}
 		if 0 != resp.Error {
-			log.Printf("error:%d, sleep 30. then try next times\n", msg.Error)
+			log.Printf("error:%d, sleep 30. then try next times\n", resp.Error)
 			time.Sleep(30 * time.Second)
 			continue
 		}
 		redisc, err := redis.Dial("tcp", redis_server)
 		if err != nil {
 			fmt.Println("Connect to redis error:", err)
-			time.Sleep(10 * time.Second)
+			time.Sleep(30 * time.Second)
 			continue
 		}
 
-		for idx, item := range resp.Data[0].Buttom {
+		for _, item := range resp.Data[0].Buttom {
 			upload_item(redisc, &item)
-			if idx == 0 {
-				timestamp = int64(item.Issue_time)
-			}
 		}
 		redisc.Close()
+		log.Printf("finished scanning once\n")
+		time.Sleep(57 * time.Second)
 	}
 }
 
