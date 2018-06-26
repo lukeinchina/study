@@ -41,3 +41,9 @@ func LongestSentenceHash(text string) string {
 	}
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
+
+func GetMD5Hash(text string) string {
+	hasher := md5.New()
+	hasher.Write([]byte(text))
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}

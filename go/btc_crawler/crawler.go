@@ -325,12 +325,22 @@ func Get8BTC() {
 	})
 }
 
+func GetChainDDDetail(url string) string {
+	doc, err := goquery.NewDocument(url)
+	if err != nil {
+		log.Fatal(err)
+	}
+	text := ""
+	doc.Find(".container .post-container article p").Each(func(i int, s *goquery.Selection) {
+		detail := s.Text()
+		text = strings.Replace(detail, "【链得得播报】", "", -1)
+	})
+	return text
+}
+
 /*
-http://www.gongxiangcj.com/short_news
-http://www.gongxiangcj.com/short_news?page=2
-1131page
-*/
-func GetGongXiangCJ() {
+ */
+func GetChainDD() {
 	redisc, err := redis.Dial("tcp", redis_server)
 	if err != nil {
 		fmt.Println("Connect to redis error", err)
@@ -339,35 +349,50 @@ func GetGongXiangCJ() {
 	defer redisc.Close()
 
 	for {
-		url := fmt.Sprintf("http://www.gongxiangcj.com/short_news?page=%d", 1)
+		url := fmt.Sprintf("http://www.chaindd.com/nictation/1")
 		doc, err := goquery.NewDocument(url)
 		if err != nil {
 			log.Fatal(err)
 		}
-		doc.Find(".kx-left-kuai-new").Each(func(i int, s *goquery.Selection) {
-			times := s.Find(".kx-left-kuai-new-date")
-			time_str := strings.TrimSpace(times.Text())
-			content := s.Find(".kx-left-kuai-new-con p").Text()
-			title := ""
-			j := strings.Index(content, "【")
-			k := strings.Index(content, "】")
-			if j >= 0 && k > j {
-				title = content[j+3 : k]
-				content = content[k+3:]
-			}
-			tm, e := time.Parse("2006-01-02 15:04", time_str)
-			if e != nil {
-				fmt.Println(e.Error())
-				tm = time.Now()
-			}
+		doc.Find(".container .day_part ul").Each(func(i int, s *goquery.Selection) {
+			s.Find("li").Each(func(idx int, ins *goquery.Selection) {
+				title_select := ins.Find("h2 a")
+				title := title_select.Text()
+				href, e := title_select.Attr("href")
+				if title == "" || href == "" {
+					return
+				}
+				if !e {
+					log.Printf("get href faild\n")
+					return
+				}
 
-			texthash := btcutil.LongestSentenceHash(content)
-			if !btcutil.InsertDB(redisc, texthash) {
-				log.Printf("[%s] exist\n", texthash)
-				return
-			}
-			UploadToServer("gongxiangcj", "共享财经", "http://www.gongxiangcj.com/short_news", title, content, tm)
-			log.Printf("[gongxiangcj]upload[%s][%s]\n", title, content)
+				titlehash := btcutil.GetMD5Hash(title)
+				if !btcutil.InsertDB(redisc, titlehash) {
+					log.Printf("[%s] exist\n", titlehash)
+					return
+				}
+				content := GetChainDDDetail(href)
+
+				cur := time.Now()
+				time_select := ins.Find(".info time")
+				tstr := time_select.Text()
+				time_str := fmt.Sprintf("%d-%02d-%02d %s", cur.Year(), cur.Month(), cur.Day(), tstr)
+				tm, err := time.Parse("2006-01-02 15:04", time_str)
+				if err != nil {
+					fmt.Println(err.Error())
+					tm = time.Now()
+				}
+
+				texthash := btcutil.LongestSentenceHash(content)
+				if !btcutil.InsertDB(redisc, texthash) {
+					log.Printf("[%s] exist\n", texthash)
+					return
+				}
+				UploadToServer("chaindd", "链得得", href, title, content, tm)
+				log.Printf("[%s][%s][%s]\n", url, title, content)
+
+			})
 		})
 
 		log.Printf("scan:%s\n", url)
@@ -381,10 +406,10 @@ func main() {
 	// GetHelloChain()
 	// c := make(chan int)
 
-	// GetGongXiangCJ()
+	GetChainDD()
+	//GetChainDDDetail("http://www.chaindd.com/nictation/3082111.html")
 	// GetBtc123News()
 	// Get8BTC()
-	extract_timestamp("10分钟前")
 	// x := <-c
 	// fmt.Printf("%d\n", x)
 }

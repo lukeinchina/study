@@ -66,7 +66,7 @@ type BSJUnreadMsg struct {
 
 type BSJResp struct {
 	Error   int         `json:"error"`
-	Message string      `json:"message"`
+	Message int         `json:"message"`
 	Data    []BSJEntity `json:"data"`
 }
 
@@ -105,6 +105,23 @@ func get_unread_msg(timestamp int64) *BSJUnreadMsg {
 func get_bsj_resp(size int) *BSJResp {
 	url := fmt.Sprintf("http://www.bishijie.com/api/newsv17/index?size=%d&client=pc", size)
 	bytedata := btcutil.GetHttpDataByProxy(url)
+	if bytedata == nil {
+		log.Println("GetHttpDataByProxy return nil")
+		return nil
+	}
+	msg := &BSJResp{}
+	err := json.Unmarshal(bytedata, msg)
+	if err != nil {
+		log.Println("unmarshal failed:", err)
+		return nil
+	}
+
+	return msg
+}
+
+func get_bsj_resp_noproxy(size int) *BSJResp {
+	url := fmt.Sprintf("http://www.bishijie.com/api/newsv17/index?size=%d&client=pc", size)
+	bytedata := btcutil.GetHttpData(url)
 	if bytedata == nil {
 		log.Println("GetHttpDataByProxy return nil")
 		return nil
@@ -181,27 +198,20 @@ func init_download() {
 }
 
 func scan_download() {
+	fail_count := 0
 	for {
 		log.Printf("ready to get_unread_msg\n")
-		/*
-			msg := get_unread_msg(timestamp)
-			if msg == nil {
-				log.Printf("get http response failed, sleep 30 seconds\n")
-				time.Sleep(30 * time.Second)
-				continue
-			}
-			fmt.Printf("error:%d, unread num:%d\n", msg.Error, msg.Data.Num)
-			if msg.Error != 0 || msg.Data.Num < 1 {
-				log.Printf("error:%d, num:%d, sleep 30 seconds, try next times\n", msg.Error, msg.Data.Num)
-				time.Sleep(30 * time.Second)
-				continue
-			}
-		*/
 		resp := get_bsj_resp(3)
+		if nil == resp && fail_count > 10 {
+			resp = get_bsj_resp_noproxy(5)
+		}
 		if nil == resp {
+			fail_count += 1
 			log.Printf("get_bsj_resp nil. sleep 30 seconds\n")
 			time.Sleep(30 * time.Second)
 			continue
+		} else {
+			fail_count = 0
 		}
 		if 0 != resp.Error {
 			log.Printf("error:%d, sleep 30. then try next times\n", resp.Error)
@@ -241,6 +251,8 @@ func main() {
 }
 
 /*
+{"error":0,"message":"","data":{"num":7345}}
+
 [
 {
     "top":["04月10日","星期二","今天"],
