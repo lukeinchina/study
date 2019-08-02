@@ -32,6 +32,7 @@ int calculate(char* s) {
         if ('\0' == *s) {
             nums[i++] = base;
             while (k > 0) {
+                printf("%d %c %d\n", nums[i-2], ops[k-1], nums[i-1]);
                 result = calculate_op(nums[i-2], nums[i-1], ops[--k]);
                 i -= 2;
                 nums[i++] = result;
@@ -40,15 +41,18 @@ int calculate(char* s) {
         } else if (isspace(*s)) {
             continue;
         } else if (isdigit(*s)) {
-            base = base * 10 + *s - '0';
+            base = base * 10 + (*s - '0');
         } else {
-			nums[i++] = base;
-			while (k > 0 && levels[*s] <= levels[ops[k-1]]) {
-                result = calculate_op(nums[i-2], nums[i-1], ops[--k]);
-				i -= 2;
+            nums[i++] = base;
+
+            if (k < 1 || levels[*s] > levels[ops[k-1]]) {
+                ops[k++] = *s;
+            } else {
+                printf("%d %c %d ->\n", nums[i-1], ops[k-1], base);
+                result = calculate_op(nums[--i], base, ops[--k]);
                 nums[i++] = result;
+                ops[k++] = *s;
             }
-			ops[k++] = *s;
             base = 0;
         }
     }
