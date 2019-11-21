@@ -36,20 +36,21 @@ update_weight(Perceptron *p, double rate, const Sample &sample,
     }
 }
 
+void perceptron_print_args(const Perceptron *p)
+{
+    printf("weights:");
+    for (size_t i = 0; i < p->weights.size(); i++) {
+        printf("%.3f\t", p->weights[i]);
+    }
+    printf("\nbias: %.3f\n", p->bias);
+}
+
 static void
 iterate_one(Perceptron *p, double rate,
         const Sample &sample, double label)
 {
     double val = perceptron_predict(p, sample);
     update_weight(p, rate, sample, val, label);
-
-    /* debug 
-    */
-    printf("weights:");
-    for (size_t i = 0; i < p->weights.size(); i++) {
-        printf("%.3f\t", p->weights[i]);
-    }
-    printf("\nbias: %.3f\n", p->bias);
 }
 
 static int 

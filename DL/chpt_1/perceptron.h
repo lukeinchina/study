@@ -23,4 +23,7 @@ int perceptron_train(Perceptron *p, int rounds, double rate,
 
 double perceptron_predict(Perceptron *p, const Sample &sample);
 
+/* debug routine */
+void perceptron_print_args(const Perceptron *p);
+
 #endif

@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "perceptron.h"
 
@@ -10,6 +11,14 @@ double linear_func(double x)
 int
 main(int argc, char *argv[])
 {
+    if (argc < 3) {
+        printf("usage:%s rounds rate\n", argv[0]);
+        return 1;
+    }
+    int round = atoi(argv[1]);
+    double rate = atof(argv[2]);
+    printf("round=%d\trate=%f\n", round, rate);
+
     Perceptron tron;
     perceptron_init(&tron, 2, linear_func);
 
@@ -39,7 +48,8 @@ main(int argc, char *argv[])
         labels.push_back(ls[i] * 1.0);
     }
 
-    perceptron_train(&tron, 10, 0.01, samples, labels);
+    perceptron_train(&tron, round, rate, samples, labels);
+    perceptron_print_args(&tron);
 
     printf("1 op 1 = %f\n",  perceptron_predict(&tron, s1));
     printf("2 op 3 = %f\n",  perceptron_predict(&tron, s2));
