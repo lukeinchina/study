@@ -4,7 +4,6 @@
 #include <time.h>
 
 #include "conv_layer.h"
-#include "filter.h"
 #include "util.h"
 
 #define CHANNEL_NUM 3
