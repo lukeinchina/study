@@ -19,7 +19,6 @@ struct ConvLayer{
 
     size_t zero_padding;        /* [in] */
     size_t stride;              /* [in] */
-    double filter_bias;         /* [in] */
     double rate;                /* [in] 学习速率 */
 
     size_t nchnl;               /* channel 数目. 方便查看 */
@@ -30,21 +29,20 @@ struct ConvLayer{
     size_t input_width;
 
 
+    double   *flt_bias;         /* */
+    double   *bias_gradient;    /* 每个filter的bias 的梯度*/
+    Matrix3D *flt_gradient;     /* filter权重的梯度*/
     Matrix3D *filpped_filters;  /* 旋转180°后的filter */
+
+    Matrix3D derivative_input;  /* 输入矩阵值的偏导 */
     Matrix3D padded_in;         /* 周边添加0值扩展后的输入 */
+
     Matrix3D feature_map;       /* 即卷积层的输出 */
     Matrix3D sensitivity_map;   /* 即输出  的误差 */
     Matrix3D padded_sm;         /* zero padding 之后的sensitivety map */
+    Matrix3D delta;             /* 输入matrix的delta. 反向传播计算生成 */
 };
 
-void 
-cl_conv(
-        Matrix3D        input,   /* [in]  */
-        Matrix3D        flt,     /* [in]  */
-        Matrix2D       *output,  /* [out] */
-        size_t          stride, 
-        double          flt_bias 
-        );
 void 
 cl_forward(
           ConvLayer      *cl,      /* [in][out] */
@@ -53,8 +51,16 @@ cl_forward(
           size_t          nflt
           );
 
+void cl_backward(ConvLayer *cl,
+          Matrix3D        input,   /* [in] */
+          const Matrix3D *filters, /* [in] */
+          size_t          nflt,
+          const Matrix3D  sm);
+
+
 void cl_destroy(ConvLayer *cl);
 void cl_print_output(const ConvLayer *cl);
+void cl_bp_gradient(ConvLayer *cl, Matrix3D sm);
 
 Matrix3D *create_filters(size_t num, size_t depth, size_t height, size_t width);
 Matrix3D *destroy_filters(Matrix3D *fitlers, size_t num);

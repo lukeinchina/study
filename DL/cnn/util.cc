@@ -109,3 +109,26 @@ matrix_add(Matrix3D m1, Matrix3D m2, Matrix3D m) {
         }
     }
 }
+
+/*
+ *
+ */
+void matrix_elem_wise(Matrix3D m, double (*op)(double))
+{
+    for (size_t i = 0; i < m.dim3; i++) {
+        for (size_t j = 0; j < m.dim2; j++){
+            for (size_t k = 0; k < m.dim1; k++) {
+                m.array[i][j][k] = op(m.array[i][j][k]);
+            }
+        }
+    }
+}
+
+double matrix_elem_sum(Matrix2D m) {
+    double sum = 0.0;
+    for (size_t i = 0; i < m.dim2; i++) {
+        for (size_t j = 0; j < m.dim1; j++){
+            sum += m.array[i][j];
+        }
+    }
+}
