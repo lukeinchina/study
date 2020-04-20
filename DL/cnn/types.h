@@ -1,6 +1,13 @@
 #ifndef DL_CNN_TYPES_H_
 #define DL_CNN_TYPES_H_
 
+/* ---------------------------------*/
+#include <vector>
+typedef std::vector<double> Sample;
+typedef std::vector<double> Label;
+/* ---------------------------------*/
+
+/*
 struct Shape {
     size_t width;
     size_t height;
@@ -11,6 +18,7 @@ struct Matrix {
     size_t col;
     double **array;
 };
+*/
 
 /* 
  * 第1维是最低维

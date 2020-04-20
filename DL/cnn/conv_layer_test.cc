@@ -77,12 +77,12 @@ double input[CHANNEL_NUM][INMATRIX_SIZE][INMATRIX_SIZE] = {
 
 /* ----------------------------------------------------------------*/
 
-void check_forward(ConvLayer *cl, const Matrix3D input, Matrix3D *filters, size_t flt_num);
-void check_gradient(ConvLayer *cl, const Matrix3D input, Matrix3D *filters, size_t flt_num, const Matrix3D sm);
+void check_forward(ConvLayer *cl, const Matrix3D input, const Matrix3D *filters, size_t flt_num);
+void check_gradient(ConvLayer *cl, const Matrix3D input,
+                Matrix3D *filters, const Matrix3D sm);
 
-Matrix3D *create_filter(void);
+Matrix3D *create_filters(void);
 Matrix3D  create_input(void);
-Matrix3D  create_sensitivity_map(void);
 
 int
 main(void) {
@@ -92,14 +92,29 @@ main(void) {
     memset(&cl, 0, sizeof(cl));
     cl.zero_padding = ZERO_PADDING;
     cl.stride       = STRIDE;
-    // cl.flt_bias  = BIAS;
     cl.rate         = LEARNING_RATE;
+    cl.nchnl        = CHANNEL_NUM;
+    cl.input_width  = INMATRIX_SIZE;
+    cl.input_height = INMATRIX_SIZE;
+    cl.nflt         = FILTER_NUM;
+    cl.flt_width    = FMATRIX_SIZE;
+    cl.flt_height   = FMATRIX_SIZE;
 
-    Matrix3D *filters = create_filter();
+    Matrix3D *filters = create_filters();
     Matrix3D  input   = create_input();
-    Matrix3D  sm      = create_sensitivity_map();
 
-    check_forward(&cl, input, filters, FILTER_NUM);
+    cl_create(&cl);
+    // check_forward(&cl, input, filters, FILTER_NUM);
+    // exit(0);
+
+    Matrix3D sm = {cl.nflt, cl.feature_map.dim2, cl.feature_map.dim1, NULL};
+    sm.array    = create_3d_array(sm.dim3, sm.dim2, sm.dim1);
+    matrix_set(sm, 1.0);
+
+    cl_forward(&cl, input, filters, FILTER_NUM);
+    cl_backward(&cl, sm);
+
+    check_gradient(&cl, input, filters, sm);
 
     filters = destroy_filters(filters, FILTER_NUM);
     cl_destroy(&cl);
@@ -108,19 +123,40 @@ main(void) {
 }
 
 void check_forward(ConvLayer *cl, const Matrix3D input, 
-        Matrix3D *filters, size_t flt_num) {
-    cl_forward(cl, input, filters, FILTER_NUM);
+        const Matrix3D *filters, size_t flt_num) {
+    cl_forward(cl, input, filters, flt_num);
     cl_print_output(cl);
 }
 
-void check_gradient(ConvLayer *cl, const Matrix3D input, 
-        Matrix3D *filters, size_t flt_num, const Matrix3D sm) {
+void check_gradient(ConvLayer *cl, const Matrix3D input,
+        Matrix3D *filters, const Matrix3D sm) {
+    double epsilon = 0.0001;
+    Matrix3D flt = filters[0];
+    Matrix3D grad = cl->flt_gradient[0];
 
-    cl_forward(cl, input, filters, FILTER_NUM);
-    cl_bp_sensitivity_map(cl, sm);
+    cl_backward(cl, sm);
+
+    for (size_t i = 0; i < grad.dim3; i++) {
+        for (size_t j = 0; j < grad.dim2; j++) {
+            for (size_t k = 0; k < grad.dim1; k++) {
+                flt.array[i][j][k] += epsilon;
+                cl_forward(cl, input, filters, FILTER_NUM);
+                double err1 = matrix_elem_sum(cl->feature_map);
+                flt.array[i][j][k] -= 2 * epsilon;
+                cl_forward(cl, input, filters, FILTER_NUM);
+                double err2 = matrix_elem_sum(cl->feature_map);
+
+                double expect_grad = (err1 - err2) / (2 * epsilon);
+                printf("weight(%lu:%lu:%lu) expect_grad:%f, actual grad:%f\n",
+                        i, j, k, expect_grad, grad.array[i][j][k]);
+                /* */
+                flt.array[i][j][k] += epsilon;
+            }
+        }
+    }
 }
 
-Matrix3D *create_filter(void) {
+Matrix3D *create_filters(void) {
 
     Matrix3D *filters = create_filters(FILTER_NUM, CHANNEL_NUM, FMATRIX_SIZE, FMATRIX_SIZE);
 
@@ -154,18 +190,5 @@ Matrix3D  create_input(void) {
         }
     }
     return in;
-}
-
-Matrix3D  create_sensitivity_map(void) {
-    Matrix3D output = {FILTER_NUM, 3, 3, NULL};
-    output.array = create_3d_array(FILTER_NUM, 3, 3);
-    for (size_t i = 0; i < FILTER_NUM; i++) {
-        for (size_t j = 0; j < 3; j++) {
-            for (size_t k = 0; k < 3; k++) {
-                output.array[i][j][k] = 1.0;
-            }
-        }
-    }
-    return output; 
 }
 

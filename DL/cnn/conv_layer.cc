@@ -28,49 +28,19 @@ destroy_filters(Matrix3D *filters, size_t num) {
     return NULL;
 }
 
-static void 
-print_filter(const Matrix3D flt) {
-    printf("[\n");
-    for (size_t i = 0; i < flt.dim3; i++) {
-        printf("[\n");
-        for (size_t j = 0; j < flt.dim2; j++) {
-            printf("[");
-            for (size_t k = 0; k < flt.dim1; k++) {
-                printf("%f", flt.array[i][j][k]);
-                printf("%c", k+1 == flt.dim1 ? ' ' : '\t');
-            }
-            printf("]\n");
-        }
-        printf("]\n");
-    }
-    printf("]\n");
-    printf("--------\n");
-}
-
 /*----------------------------conv layer ----------------------------------*/
 void cl_print_output(const ConvLayer *cl) {
     assert(cl->nflt == cl->feature_map.dim3);
 
     /* 输出卷积 */
-    for (size_t n = 0; n < cl->nflt; n++) {
-        printf("[%lu]:\n", n);
-        printf("[\n");
-        for (size_t i = 0; i < cl->feature_map.dim2; i++) {
-            printf("[");
-            for (size_t j = 0; j < cl->feature_map.dim1; j++) {
-                printf("%f", cl->feature_map.array[n][i][j]);
-                printf("%c", j+1 == cl->feature_map.dim1 ? ' ' : '\t');
-            }
-            printf("]\n");
-        }
-        printf("]\n");
-        printf("--------\n");
-    }
+    printf("卷积输出feature map:\n");
+    print_matrix(cl->feature_map);
+    printf("--------\n");
 
     /* 输出旋转180°后的filter */
     for (size_t n = 0; n < cl->nflt; n++) {
         printf("\n------------- filpped filter【%lu】--------------\n", n);
-        print_filter(cl->filpped_filters[n]);
+        print_matrix(cl->filpped_filters[n]);
     }
 }
 
@@ -176,8 +146,8 @@ cl_conv(
         for (size_t j = 0; j < output->dim1; j++) {
             double  sum = cl_conv_elem(input, flt, i*stride, j*stride);
             /* 应用激活函数计算 */
-            // output->array[i][j] =  relu_activator(sum + flt_bias);
-            output->array[i][j] =  sum + flt_bias;
+            output->array[i][j] =  relu_activator(sum + flt_bias);
+            // output->array[i][j] =  sum + flt_bias;
         }
     }
 }
@@ -202,12 +172,17 @@ cl_conv(
         for (size_t j = 0; j < output->dim1; j++) {
             double  sum = cl_conv_elem(input, flt, i*stride, j*stride);
             /* 应用激活函数计算 */
-            // output->array[i][j] =  relu_activator(sum + flt_bias);
-            output->array[i][j] =  sum + flt_bias;
+            output->array[i][j] =  relu_activator(sum + flt_bias);
+            // output->array[i][j] =  sum + flt_bias;
         }
     }
 }
 
+
+void 
+cl_forward( ConvLayer *cl, const Matrix3D  &input ) {
+    cl_forward(cl, input, cl->filters, cl->nflt);
+} 
 
 void 
 cl_forward(
@@ -217,32 +192,15 @@ cl_forward(
           size_t nflt
           ) {
 
-    /* 记录属性，做误差计算时候用到 */
-    cl->nflt         = nflt;
-    cl->nchnl        = input.dim3;/* 第3维是通道数目 */
-    cl->input_height = input.dim2;
-    cl->input_width  = input.dim1;
-    cl->flt_height   = (*filters).dim2;
-    cl->flt_width    = (*filters).dim1;
-
     /* 扩展输入矩阵  */
-    cl->padded_in = padding_matrix(input, cl->zero_padding);
+    cl->padded_input = padding_matrix(input, cl->zero_padding);
 
-    /* 计算输出矩阵大小 */
-    size_t width  = calc_output_size(input.dim1, filters[0].dim1, 
-                                     cl->zero_padding, cl->stride);
-    size_t height = calc_output_size(input.dim2, filters[0].dim2,
-                                     cl->zero_padding, cl->stride);
-    cl->feature_map.dim3 = nflt;  /* filter 数目 */
-    cl->feature_map.dim2 = height;
-    cl->feature_map.dim1 = width;
-    cl->feature_map.array = create_3d_array(nflt, height, width);
-
-    cl->flt_bias = (double *)calloc(nflt, sizeof(double));
+    size_t height = cl->feature_map.dim2;
+    size_t width  = cl->feature_map.dim1;
     /* 正式开始计算卷积 */
     for (size_t i = 0; i < nflt; i++) {
         Matrix2D out = {height, width, cl->feature_map.array[i]};
-        cl_conv(cl->padded_in, filters[i], &out, cl->stride, cl->flt_bias[i]);
+        cl_conv(cl->padded_input, filters[i], &out, cl->stride, cl->flt_bias[i]);
     }
     /*--------------卷积计算到此结束----------------*/
 
@@ -257,11 +215,90 @@ cl_forward(
     return ;
 }
 
+int
+cl_create(ConvLayer *cl) {
+    /* 创建filters 权重 */
+    cl->filters = create_filters(cl->nflt, cl->nchnl, cl->flt_height, cl->flt_width);
+
+    /* 计算输出矩阵大小, init 输出矩阵 */
+    size_t width  = calc_output_size(cl->input_width, cl->flt_width,
+                                     cl->zero_padding, cl->stride);
+    size_t height = calc_output_size(cl->input_height, cl->flt_height,
+                                     cl->zero_padding, cl->stride);
+    cl->feature_map.dim3 = cl->nflt;  /* filter 数目 */
+    cl->feature_map.dim2 = height;
+    cl->feature_map.dim1 = width;
+    cl->feature_map.array = create_3d_array(cl->nflt, height, width);
+
+    /* dm = delta matrix. 同输入矩阵大小一样. */
+    Matrix3D dm = {cl->nchnl, cl->input_height, cl->input_width, NULL};
+    cl->tmp_delta   = dm;
+    cl->input_delta = dm;
+    cl->tmp_delta.array   = create_3d_array(dm.dim3, dm.dim2, dm.dim1);
+    cl->input_delta.array = create_3d_array(dm.dim3, dm.dim2, dm.dim1); 
+
+    /* 创建filter的梯度迭代用到的变量空间. 初始化为0 */
+    cl->flt_bias      = (double *)calloc(cl->nflt, sizeof(double));
+    cl->bias_gradient = (double *)calloc(cl->nflt, sizeof(double));
+    cl->flt_gradient  = (Matrix3D *)malloc(cl->nflt * sizeof(Matrix3D));
+    for (size_t i = 0; i < cl->nflt; i++) {
+        Matrix3D *p = cl->flt_gradient + i;
+        p->dim3     = cl->nchnl;
+        p->dim2     = cl->flt_height;
+        p->dim1     = cl->flt_width;
+        p->array    = create_3d_array(p->dim3, p->dim2, p->dim1);
+    }
+
+    /*
+     * cl->derivative_input 
+     * cl->filpped_filter
+     * cl->padded_input
+     * cl->stride1_sm
+     * cl->padded_sm
+     *
+     */
+
+    return 0;
+}
+
 void 
 cl_destroy(ConvLayer *cl) {
-    (void )cl;
+    if (NULL != cl->filters) {
+        destroy_filters(cl->filters, cl->nflt);
+        cl->filters = NULL;
+    }
+    if (cl->padded_input.array != NULL) {
+        matrix_destroy(&cl->padded_input);
+    }
+    if (cl->feature_map.array != NULL) {
+        matrix_destroy(&cl->feature_map);
+    }
+    if (cl->tmp_delta.array != NULL) {
+        matrix_destroy(&cl->tmp_delta);
+    }
+    if (cl->input_delta.array != NULL) {
+        matrix_destroy(&cl->input_delta);
+    }
+
+    if (NULL != cl->flt_bias) {
+        free(cl->flt_bias);
+        cl->flt_bias = NULL;
+    }
+    if (NULL != cl->bias_gradient) {
+        free(cl->bias_gradient);
+        cl->bias_gradient = NULL;
+    }
+    if (NULL != cl->flt_gradient) {
+        for (size_t i = 0; i < cl->nflt; i++) {
+            matrix_destroy(cl->flt_gradient + i);
+        }
+        free(cl->flt_gradient);
+        cl->flt_gradient  = NULL;
+    }
+
     return ;
 }
+
 
 /*
  * 计算，相当于把第层的sensitive map周围补一圈0，在与180度翻转后的filter进行cross-correlation
@@ -273,8 +310,8 @@ cl_destroy(ConvLayer *cl) {
  */
 static Matrix3D
 cl_expand_sensitivity_map(ConvLayer *cl, Matrix3D sm) {
-    size_t width  = cl->input_width - cl->flt_width + 1 - 2*cl->zero_padding;
-    size_t height = cl->input_height - cl->flt_height + 1 - 2*cl->zero_padding;
+    size_t width  = cl->input_width - cl->flt_width + 1 + 2*cl->zero_padding;
+    size_t height = cl->input_height - cl->flt_height + 1 + 2*cl->zero_padding;
 
     Matrix3D dst = {sm.dim3, height, width, NULL};
     dst.array = create_3d_array(dst.dim3, dst.dim2, dst.dim1);
@@ -299,39 +336,36 @@ cl_expand_sensitivity_map(ConvLayer *cl, Matrix3D sm) {
 void
 cl_bp_sensitivity_map(ConvLayer *cl, Matrix3D sm) {
 
-    Matrix3D tmp = cl_expand_sensitivity_map(cl, sm);
-    size_t width = tmp.dim1;
+    cl->stride1_sm = cl_expand_sensitivity_map(cl, sm);
+    print_matrix(cl->stride1_sm);
+
+    size_t width = cl->stride1_sm.dim1;
     /* 做完0扩展后的大小，使其和filter做卷积，输出大小等于原始输入矩阵大小 */
     /* zp * 2 + width + 1 - flt_width == input_width,该等式的变换 */
     size_t zp = (cl->input_width + cl->flt_width - 1 - width) / 2;
-    cl->padded_sm = padding_matrix(tmp, zp);
-    /* free 空间 */
-    tmp.array = destroy_3d_array(tmp.array, tmp.dim3, tmp.dim2, tmp.dim1);
+    cl->padded_sm = padding_matrix(cl->stride1_sm, zp);
 
-    /* dm = delta matrix. 同输入矩阵大小一样. 中间变量 */
-    Matrix3D dm = {cl->nchnl, cl->input_height, cl->input_width, NULL};
-    dm.array    = create_3d_array(dm.dim3, dm.dim2, dm.dim1);
+    /* delta set 0 */
+    matrix_set(cl->input_delta, 0.0);
+    matrix_set(cl->tmp_delta, 0.0);
 
-    cl->delta       = dm;
-    cl->delta.array = create_3d_array(dm.dim3, dm.dim2, dm.dim1); 
-
+    /* 这一步性能可以优化，所有偏导数为0的元素对应的误差都不需要计算。直接为0 */
     for (size_t i = 0; i < cl->nflt; i++) {
         Matrix2D in = {cl->padded_sm.dim2, cl->padded_sm.dim1, cl->padded_sm.array[i]};
         for (size_t j = 0; j < cl->nchnl; j++) {
             /* 2D 的filter */
             Matrix2D flt = {cl->flt_height, cl->flt_width, cl->filpped_filters[i].array[j]};
-            Matrix2D out = {dm.dim2, dm.dim1, dm.array[j]};
+            Matrix2D out = {cl->tmp_delta.dim2, cl->tmp_delta.dim1, cl->tmp_delta.array[j]};
             cl_conv(in, flt, &out, 1, 0);
         }
-        matrix_add(cl->delta, dm, cl->delta);
+        matrix_add(cl->input_delta, cl->tmp_delta, cl->input_delta);
     }
-    dm.array = destroy_3d_array(dm.array, dm.dim3, dm.dim2, dm.dim1);
 
     /* delta *= input  将计算结果与激活函数的偏导数做 乘法操作 */
     for (size_t i = 0; i < cl->nchnl; i++) {
         for (size_t j = 0; j < cl->input_height; j++) {
             for (size_t k = 0; k < cl->input_width; k++) {
-                cl->delta.array[i][j][k] *= cl->derivative_input.array[i][j][k];
+                cl->input_delta.array[i][j][k] *= cl->derivative_input.array[i][j][k];
             }
         }
     }
@@ -358,16 +392,6 @@ cl_update_filter(ConvLayer *cl, Matrix3D *filters, size_t nflt) {
 
 void 
 cl_bp_gradient(ConvLayer *cl, Matrix3D sm) {
-    /* 创建filter的梯度迭代用到的变量空间. 初始化为0 */
-    cl->bias_gradient = (double *)calloc(cl->nflt, sizeof(double));
-    cl->flt_gradient  = (Matrix3D *)malloc(cl->nflt * sizeof(Matrix3D));
-    for (size_t i = 0; i < cl->nflt; i++) {
-        Matrix3D *p = cl->flt_gradient + i;
-        p->dim3     = cl->nchnl;
-        p->dim2     = cl->flt_height;
-        p->dim1     = cl->flt_width;
-        p->array    = create_3d_array(p->dim3, p->dim2, p->dim1);
-    }
 
     /* 步长为1的扩展矩阵 */
     Matrix3D ex_sm = cl_expand_sensitivity_map(cl, sm);
@@ -378,7 +402,7 @@ cl_bp_gradient(ConvLayer *cl, Matrix3D sm) {
         Matrix2D flt = {ex_sm.dim2, ex_sm.dim1, ex_sm.array[f]};
 
         for (size_t c = 0; c < cl->nchnl; c++) {
-            Matrix2D in  = {cl->padded_in.dim2, cl->padded_in.dim1, cl->padded_in.array[c]};
+            Matrix2D in  = {cl->padded_input.dim2, cl->padded_input.dim1, cl->padded_input.array[c]};
             Matrix2D out = {cl->flt_height, cl->flt_width, cl->flt_gradient[f].array[c]};
             cl_conv(in, flt, &out, 1, 0);
         }
@@ -386,6 +410,11 @@ cl_bp_gradient(ConvLayer *cl, Matrix3D sm) {
     }
 }
 
+
+void cl_backward(ConvLayer *cl, const Matrix3D sm) {
+    cl_bp_sensitivity_map(cl, sm);
+    cl_bp_gradient(cl, sm);
+}
 
 void cl_backward(ConvLayer *cl,
           Matrix3D        input,   /* [in] */

@@ -54,6 +54,13 @@ print_2d_array(double **array, size_t row, size_t col) {
     }
     printf("]\n");
 }
+
+void 
+set_random_value(Matrix2D m) {
+    set_random_value(m.array, m.dim2, m.dim1);
+    return ;
+}
+
 /*-----------------------------2d -------------------------------*/
 
 /*-----------------------------3D -------------------------------*/
@@ -73,12 +80,6 @@ destroy_3d_array(double ***array, size_t dim3, size_t dim2, size_t dim1) {
     }
     free(array);
     return NULL;
-}
-
-void 
-set_random_value(Matrix2D m) {
-    set_random_value(m.array, m.dim2, m.dim1);
-    return ;
 }
 
 void 
@@ -110,6 +111,30 @@ matrix_add(Matrix3D m1, Matrix3D m2, Matrix3D m) {
     }
 }
 
+void 
+matrix_set(Matrix2D m, double val) {
+    for (size_t i = 0; i < m.dim2; i++) {
+        for (size_t j = 0; j < m.dim1; j++) {
+            m.array[i][j] = val;
+        }
+    }
+}
+
+void 
+matrix_set(Matrix3D m, double val) {
+    for (size_t i = 0; i < m.dim3; i++) {
+        for (size_t j = 0; j < m.dim2; j++) {
+            for (size_t k = 0; k < m.dim1; k++) {
+                m.array[i][j][k] = val;
+            }
+        }
+    }
+}
+
+void matrix_destroy(Matrix3D *m) {
+    m->array = destroy_3d_array(m->array, m->dim3, m->dim2, m->dim1);
+}
+
 /*
  *
  */
@@ -131,4 +156,30 @@ double matrix_elem_sum(Matrix2D m) {
             sum += m.array[i][j];
         }
     }
+    return sum;
+}
+
+double matrix_elem_sum(Matrix3D m) {
+    double sum = 0.0;
+    for (size_t i = 0; i < m.dim3; i++) {
+        Matrix2D mm = {m.dim2, m.dim1, m.array[i]};
+        sum += matrix_elem_sum(mm);
+    }
+    return sum;
+}
+
+void print_matrix(Matrix3D m) {
+    printf("[\n");
+    for (size_t i = 0; i < m.dim3; i++) {
+        printf("\t[\n");
+        for (size_t j = 0; j < m.dim2; j++) {
+            printf("\t\t[");
+            for (size_t k = 0; k < m.dim1; k++) {
+                printf("%f ", m.array[i][j][k]);
+            }
+            printf("]\n");
+        }
+        printf("\t]\n");
+    }
+    printf("]\n");
 }
